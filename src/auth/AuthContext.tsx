@@ -56,6 +56,38 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 const modesKey = (userId: string) => `cargora.modes.${userId}`;
 
+/**
+ * What a phone remembers about its owner's choice.
+ *
+ * `chosen` is stored SEPARATELY from `modes` and that separation is the point. An empty
+ * `modes` means "everything this login allows" - which is both the commonest answer and,
+ * stored on its own, indistinguishable from never having answered. Deriving "have they
+ * chosen?" from the list's length made picking every type bounce straight back to the
+ * picker, forever, because an empty list read as "not chosen yet".
+ */
+type StoredModePref = { chosen: boolean; modes: string[] };
+
+/** Accepts the older plain-array format too, so a phone that saved a preference before this
+ *  shape existed keeps it instead of being sent back to the picker. */
+function parseModePref(raw: string | null): StoredModePref {
+  if (!raw) return { chosen: false, modes: [] };
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      // Legacy: a bare list. A non-empty one was definitely a real choice; an empty one is
+      // ambiguous, so it is treated as unanswered and the picker asks once more.
+      return { chosen: parsed.length > 0, modes: parsed as string[] };
+    }
+    if (parsed && typeof parsed === "object" && "chosen" in parsed) {
+      const pref = parsed as StoredModePref;
+      return { chosen: !!pref.chosen, modes: Array.isArray(pref.modes) ? pref.modes : [] };
+    }
+  } catch {
+    /* unreadable - fall through to "not chosen" */
+  }
+  return { chosen: false, modes: [] };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>("loading");
   const [identity, setIdentity] = useState<AppIdentity | null>(null);
@@ -66,24 +98,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => () => { mounted.current = false; }, []);
 
   const loadModePreference = useCallback(async (who: AppIdentity) => {
-    let stored: string[] = [];
+    let pref: StoredModePref = { chosen: false, modes: [] };
     try {
-      const raw = await AsyncStorage.getItem(modesKey(who.user_id));
-      if (raw) stored = JSON.parse(raw) as string[];
+      pref = parseModePref(await AsyncStorage.getItem(modesKey(who.user_id)));
     } catch {
       // A preference is a convenience. Losing it means the picker shows again, which is a
       // far better outcome than failing to start.
-      stored = [];
+      pref = { chosen: false, modes: [] };
     }
     // Drop anything this login is no longer allowed - an administrator may have narrowed it
     // since the choice was made, and a stale tick must not survive that.
-    const valid = stored.filter((m) => who.allowed_modes.includes(m));
+    const valid = pref.modes.filter((m) => who.allowed_modes.includes(m));
     if (!mounted.current) return;
     setSelectedModes(valid);
-    setHasChosenModes(valid.length > 0);
-    if (valid.length !== stored.length) {
+    setHasChosenModes(pref.chosen);
+    if (valid.length !== pref.modes.length) {
       try {
-        await AsyncStorage.setItem(modesKey(who.user_id), JSON.stringify(valid));
+        await AsyncStorage.setItem(
+          modesKey(who.user_id),
+          JSON.stringify({ chosen: pref.chosen, modes: valid } satisfies StoredModePref),
+        );
       } catch { /* best effort */ }
     }
   }, []);
@@ -211,9 +245,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // cannot persist a mode this login may not see.
     const valid = modes.filter((m) => identity.allowed_modes.includes(m));
     setSelectedModes(valid);
-    setHasChosenModes(valid.length > 0);
+    // Reaching this function at all IS the choice - including choosing everything, which
+    // stores an empty list. Anything derived from the list's length instead would make that
+    // case look unanswered and bounce the user back to the picker.
+    setHasChosenModes(true);
     try {
-      await AsyncStorage.setItem(modesKey(identity.user_id), JSON.stringify(valid));
+      await AsyncStorage.setItem(
+        modesKey(identity.user_id),
+        JSON.stringify({ chosen: true, modes: valid } satisfies StoredModePref),
+      );
     } catch { /* the choice still applies to this session */ }
   }, [identity]);
 
