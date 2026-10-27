@@ -10,7 +10,13 @@
  *                            server intersects it again on arrival, so a tampered app
  *                            still sees nothing extra.
  *
- * The preference is per login, keyed by user id, so two accounts on one handset do not
+ * The preference lives in AsyncStorage, which is per DEVICE. That is the whole point: one
+ * company normally has ONE app login that several managers share, and each of them picks
+ * what they want on their own phone. Same login, same allowed_modes, different default on
+ * every handset - the sea-freight manager sees Sea Import, the air-freight manager sees Air
+ * Import, and neither changes anything for the other.
+ *
+ * It is keyed by user id as well, so that two different logins used on one handset do not
  * inherit each other's filters.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -29,8 +35,9 @@ type Status = "loading" | "signedOut" | "signedIn";
 type AuthValue = {
   status: Status;
   identity: AppIdentity | null;
-  /** The modes actually in force: the chosen subset, or every allowed mode when nothing has
-   *  been chosen yet. Screens use this and never reason about the empty case themselves. */
+  /** The modes actually in force on THIS phone: the chosen subset, or every allowed mode
+   *  when nothing has been chosen yet. Screens use this and never reason about the empty
+   *  case themselves. */
   activeModes: string[];
   /** What the user ticked. Empty means "not chosen yet", which is why it is separate from
    *  activeModes above. */

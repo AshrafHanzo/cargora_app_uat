@@ -104,8 +104,11 @@ export default function ProfileScreen() {
             </View>
             <Muted style={{ marginTop: spacing.md }}>
               {watchingAll
-                ? "Every shipment type this login is allowed. New types added later appear automatically."
+                ? "Everything this company login covers. New shipment types added later appear automatically."
                 : `${activeModes.length} of ${identity?.allowed_modes.length ?? 0} shipment types.`}
+            </Muted>
+            <Muted style={{ marginTop: spacing.xs }}>
+              Your setting on this phone only — it does not change what anyone else sees.
             </Muted>
             <Button
               label="Change what I watch"

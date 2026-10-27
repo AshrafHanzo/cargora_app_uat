@@ -63,7 +63,7 @@ export default function ModesScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <ScreenHeader title="What do you watch?" subtitle={subtitle} />
+      <ScreenHeader title="What do you want to see?" subtitle={subtitle} />
 
       <ScrollView
         contentContainerStyle={{
@@ -73,8 +73,13 @@ export default function ModesScreen() {
         }}
       >
         <Muted>
-          Pick one or more shipment types. Only these will appear on your dashboard, usage
-          and reports. You can change this any time from Profile.
+          Pick one or more shipment types. Only these appear on your dashboard, usage and
+          reports.
+        </Muted>
+        <Muted>
+          This is your own setting on this phone. Other people signed in with the same
+          company login keep whatever they chose on theirs — changing it here changes
+          nothing for them. You can come back to it any time from Profile.
         </Muted>
 
         {allowed.length > 1 ? (
