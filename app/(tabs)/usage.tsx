@@ -1,71 +1,36 @@
 /**
  * Usage - who completed what, over a period.
  *
- * Today / This month / Last 7 / Last 30, plus the mode filter. The comparison shown is
+ * Today / This month / Custom, plus the shipment-type filter. The comparison is always
  * against the SAME LENGTH period immediately before, not "last month": comparing three days
  * against thirty-one produces a percentage that is simply wrong, and it is exactly the kind
  * that gets repeated in a meeting.
  */
 import React, { useMemo, useState } from "react";
-import { RefreshControl, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { localDateKey, managerApi } from "../../src/api/manager";
 import { useAuth } from "../../src/auth/AuthContext";
-import { ShareBar } from "../../src/components/TrendChart";
+import { ShareBar } from "../../src/components/BarChart";
+import { DateRangeButtons, formatDay } from "../../src/components/DatePicker";
+import { ModeIcon } from "../../src/components/ModeIcon";
 import {
   BigStat, Button, Card, ChangePill, Chip, ChipRow, EmptyState, ErrorNotice, Muted,
   ScreenHeader, SectionLabel, Skeleton,
 } from "../../src/components/ui";
 import { useAsync } from "../../src/hooks/useAsync";
-import { modeColor, spacing, typography, useTheme } from "../../src/theme";
+import { modeColor, radius, spacing, typography, useTheme } from "../../src/theme";
 
-type Period = { key: string; label: string; range: () => { start: string; end: string } };
+type PeriodKey = "today" | "month" | "custom";
 
-const today = () => new Date();
+function todayKey(): string {
+  return localDateKey(new Date());
+}
 
-const PERIODS: Period[] = [
-  {
-    key: "today",
-    label: "Today",
-    range: () => ({ start: localDateKey(today()), end: localDateKey(today()) }),
-  },
-  {
-    key: "week",
-    label: "Last 7 days",
-    range: () => {
-      const end = today();
-      const start = new Date(end);
-      start.setDate(end.getDate() - 6);
-      return { start: localDateKey(start), end: localDateKey(end) };
-    },
-  },
-  {
-    key: "month",
-    label: "This month",
-    range: () => {
-      const end = today();
-      const start = new Date(end.getFullYear(), end.getMonth(), 1);
-      return { start: localDateKey(start), end: localDateKey(end) };
-    },
-  },
-  {
-    key: "30",
-    label: "Last 30 days",
-    range: () => {
-      const end = today();
-      const start = new Date(end);
-      start.setDate(end.getDate() - 29);
-      return { start: localDateKey(start), end: localDateKey(end) };
-    },
-  },
-];
-
-function pretty(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString(undefined, {
-    day: "numeric", month: "short",
-  });
+function monthStart(): string {
+  const now = new Date();
+  return localDateKey(new Date(now.getFullYear(), now.getMonth(), 1));
 }
 
 export default function UsageScreen() {
@@ -73,13 +38,19 @@ export default function UsageScreen() {
   const insets = useSafeAreaInsets();
   const { identity, activeModes } = useAuth();
 
-  const [periodKey, setPeriodKey] = useState("month");
-  // Starts as null meaning "whatever the login may see". A tick here narrows this screen
-  // only, leaving the phone's saved preference alone - it is a look, not a setting.
+  const [periodKey, setPeriodKey] = useState<PeriodKey>("month");
+  // Only consulted when the period is "custom", but kept primed with this month so opening
+  // the pickers never starts on a blank or nonsense range.
+  const [custom, setCustom] = useState({ start: monthStart(), end: todayKey() });
+  // Null means "every type this phone is set to". A tick narrows THIS screen only, leaving
+  // the phone's saved preference alone - it is a look, not a setting.
   const [modeFilter, setModeFilter] = useState<string[] | null>(null);
 
-  const period = PERIODS.find((p) => p.key === periodKey) ?? PERIODS[2];
-  const { start, end } = useMemo(() => period.range(), [period]);
+  const { start, end } = useMemo(() => {
+    if (periodKey === "today") return { start: todayKey(), end: todayKey() };
+    if (periodKey === "custom") return custom;
+    return { start: monthStart(), end: todayKey() };
+  }, [periodKey, custom]);
 
   const modes = modeFilter ?? activeModes;
   const modeKey = modes.join(",");
@@ -102,11 +73,11 @@ export default function UsageScreen() {
 
   async function exportReport() {
     if (!data) return;
-    // Share rather than a file: the phone's own sheet covers WhatsApp, mail and Slack, and
-    // a manager forwarding a number to their team is what "export" actually means here.
+    // Share rather than writing a file: the phone's own sheet covers WhatsApp, mail and
+    // Slack, and forwarding a number to the team is what "export" means on a phone.
     const lines = [
       `${identity?.company_name ?? "Cargora"} — completed jobs`,
-      `${pretty(data.start)} to ${pretty(data.end)}`,
+      `${formatDay(data.start)} to ${formatDay(data.end)}`,
       `Shipment types: ${data.modes.join(", ")}`,
       "",
       `Total completed: ${data.completed}`,
@@ -126,22 +97,55 @@ export default function UsageScreen() {
     }
   }
 
+  const periods: { key: PeriodKey; label: string }[] = [
+    { key: "today", label: "Today" },
+    { key: "month", label: "This Month" },
+    { key: "custom", label: "Custom Date" },
+  ];
+
   return (
     <View style={{ flex: 1, backgroundColor: t.bg }}>
-      <ScreenHeader title="Usage" subtitle={`${pretty(start)} — ${pretty(end)}`}>
-        <View style={{ marginTop: spacing.lg }}>
-          <ChipRow>
-            {PERIODS.map((p) => (
-              <Chip
+      <ScreenHeader title="Usage" subtitle="User-wise completed jobs">
+        {/* A segmented control, not chips. Three mutually exclusive choices that always sit
+            in the same place are far easier to hit than a row that scrolls - and the
+            previous version used a white "selected" colour on a white background, which made
+            the chosen one unreadable. */}
+        <View style={[styles.segment, { marginTop: spacing.lg }]}>
+          {periods.map((p) => {
+            const on = p.key === periodKey;
+            return (
+              <Pressable
                 key={p.key}
-                label={p.label}
-                selected={p.key === periodKey}
                 onPress={() => setPeriodKey(p.key)}
-                color="#FFFFFF"
-              />
-            ))}
-          </ChipRow>
+                style={[styles.segmentItem, on && { backgroundColor: "#FFFFFF" }]}
+              >
+                <Text
+                  style={[
+                    typography.small,
+                    { color: on ? "#4338CA" : "rgba(255,255,255,0.9)", fontWeight: "700" },
+                  ]}
+                >
+                  {p.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
+
+        {periodKey === "custom" ? (
+          <View style={{ marginTop: spacing.md }}>
+            <DateRangeButtons
+              start={custom.start}
+              end={custom.end}
+              onChange={setCustom}
+              onHeader
+            />
+          </View>
+        ) : (
+          <Text style={[typography.small, { color: "rgba(255,255,255,0.85)", marginTop: spacing.md }]}>
+            {formatDay(start)} — {formatDay(end)}
+          </Text>
+        )}
       </ScreenHeader>
 
       <ScrollView
@@ -156,7 +160,6 @@ export default function UsageScreen() {
       >
         {usage.error && !data ? <ErrorNotice message={usage.error} onRetry={usage.reload} /> : null}
 
-        {/* Mode filter - only worth showing when there is more than one to choose from. */}
         {(identity?.allowed_modes.length ?? 0) > 1 ? (
           <View style={{ gap: spacing.sm }}>
             <SectionLabel>Shipment types</SectionLabel>
@@ -186,17 +189,11 @@ export default function UsageScreen() {
               <View style={{ marginTop: spacing.sm }}>
                 <BigStat
                   value={data.completed}
-                  caption={`${pretty(data.start)} — ${pretty(data.end)}`}
+                  caption={`${formatDay(data.start)} — ${formatDay(data.end)}`}
                   change={data.change_pct}
                 />
               </View>
-              <View
-                style={{
-                  marginTop: spacing.lg, paddingTop: spacing.md,
-                  borderTopWidth: 1, borderTopColor: t.border,
-                  flexDirection: "row", justifyContent: "space-between",
-                }}
-              >
+              <View style={[styles.divider, { borderTopColor: t.border }]}>
                 <Muted>Previous period of the same length</Muted>
                 <Text style={[typography.h3, { color: t.textMuted }]}>
                   {data.previous_completed}
@@ -213,9 +210,9 @@ export default function UsageScreen() {
               {data.by_mode.map((m) => (
                 <View key={m.mode}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                    <View
-                      style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: modeColor(m.mode) }}
-                    />
+                    <View style={[styles.miniIcon, { backgroundColor: `${modeColor(m.mode)}1A` }]}>
+                      <ModeIcon mode={m.mode} size={16} />
+                    </View>
                     <Text style={[typography.body, { color: t.text, flex: 1 }]}>{m.mode}</Text>
                     <ChangePill value={m.change_pct} compact />
                     <Text style={[typography.h3, { color: t.text, minWidth: 34, textAlign: "right" }]}>
@@ -247,13 +244,21 @@ export default function UsageScreen() {
             />
           ) : (
             <View style={{ marginTop: spacing.md }}>
+              <View style={[styles.row, { borderBottomColor: t.border, paddingBottom: spacing.sm }]}>
+                <Text style={[typography.label, { color: t.textFaint, width: 22 }]}>#</Text>
+                <Text style={[typography.label, { color: t.textFaint, flex: 1 }]}>USER</Text>
+                <Text style={[typography.label, { color: t.textFaint, width: 54, textAlign: "right" }]}>
+                  SHARE
+                </Text>
+                <Text style={[typography.label, { color: t.textFaint, width: 44, textAlign: "right" }]}>
+                  JOBS
+                </Text>
+              </View>
+
               {data.users.map((u, i) => (
                 <View
                   key={`${u.user_id ?? "none"}-${i}`}
-                  style={[
-                    styles.row,
-                    { borderBottomColor: t.border, borderBottomWidth: StyleSheet.hairlineWidth },
-                  ]}
+                  style={[styles.row, { borderBottomColor: t.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
                 >
                   <Text style={[typography.small, { color: t.textFaint, width: 22 }]}>{i + 1}</Text>
                   <Text numberOfLines={1} style={[typography.body, { color: t.text, flex: 1 }]}>
@@ -268,11 +273,11 @@ export default function UsageScreen() {
                 </View>
               ))}
 
-              {/* The total row. The per-user rows always add up to it - an unassigned job is
+              {/* The total. The per-user rows always add up to it - an unassigned job is
                   grouped under one named row rather than dropped, so the table can never
                   contradict the number at the top of the screen. */}
               <View style={[styles.row, { borderBottomWidth: 0, paddingTop: spacing.md }]}>
-                <Text style={[typography.small, { color: t.textFaint, width: 22 }]} />
+                <Text style={{ width: 22 }} />
                 <Text style={[typography.h3, { color: t.text, flex: 1 }]}>Total</Text>
                 <Text style={{ width: 54 }} />
                 <Text style={[typography.h3, { color: t.primaryText, width: 44, textAlign: "right" }]}>
@@ -292,10 +297,28 @@ export default function UsageScreen() {
 }
 
 const styles = StyleSheet.create({
-  row: {
+  segment: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.md,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: radius.lg,
+    padding: 3,
+    gap: 3,
   },
+  segmentItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+  },
+  divider: {
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md },
+  miniIcon: { width: 26, height: 26, borderRadius: radius.sm, alignItems: "center", justifyContent: "center" },
 });

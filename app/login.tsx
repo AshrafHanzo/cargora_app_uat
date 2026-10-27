@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { API_LABEL } from "../src/api/config";
 import { useAuth } from "../src/auth/AuthContext";
+import { Logo } from "../src/components/Logo";
 import { Button } from "../src/components/ui";
 import { radius, shadow, spacing, typography, useTheme } from "../src/theme";
 
@@ -67,9 +68,7 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={{ alignItems: "center", marginBottom: spacing.xxl }}>
-            <View style={styles.logo}>
-              <Text style={{ fontSize: 30, fontWeight: "800", color: "#4338CA" }}>C</Text>
-            </View>
+            <Logo size={76} />
             <Text style={[typography.h1, { color: "#FFFFFF", marginTop: spacing.lg }]}>
               Cargora Manager
             </Text>
@@ -152,10 +151,6 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  logo: {
-    width: 68, height: 68, borderRadius: radius.xl,
-    backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center",
-  },
   card: { borderRadius: radius.xxl, padding: spacing.xl },
   label: { marginTop: spacing.lg, marginBottom: spacing.sm, letterSpacing: 0.8 },
   input: {

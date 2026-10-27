@@ -29,6 +29,7 @@
       "expo-secure-store"
     ],
     "scheme": "cargoramanager",
-    "newArchEnabled": true
+    "newArchEnabled": true,
+    "backgroundColor": "#0F172A"
   }
 }

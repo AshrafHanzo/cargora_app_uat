@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { API_LABEL } from "../../src/api/config";
 import { useAuth } from "../../src/auth/AuthContext";
+import { Logo } from "../../src/components/Logo";
 import { Button, Card, Muted, ScreenHeader, SectionLabel } from "../../src/components/ui";
 import { modeColor, radius, spacing, typography, useTheme } from "../../src/theme";
 
@@ -155,7 +156,10 @@ export default function ProfileScreen() {
           loading={signingOut}
         />
 
-        <Muted style={{ textAlign: "center" }}>Cargora Manager · v1.0.0</Muted>
+        <View style={{ alignItems: "center", gap: spacing.sm, marginTop: spacing.sm }}>
+          <Logo size={34} />
+          <Muted>Cargora Manager · v1.0.0</Muted>
+        </View>
       </ScrollView>
     </View>
   );

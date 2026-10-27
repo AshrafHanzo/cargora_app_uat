@@ -8,36 +8,46 @@
  * so the number a manager quotes is never "however many happened to fit in one response".
  */
 import React, { useMemo, useState } from "react";
-import { RefreshControl, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { localDateKey, managerApi, ReportRow } from "../../src/api/manager";
 import { useAuth } from "../../src/auth/AuthContext";
+import { DateRangeButtons, formatDay } from "../../src/components/DatePicker";
+import { ModeIcon } from "../../src/components/ModeIcon";
 import {
   Button, Card, Chip, ChipRow, EmptyState, ErrorNotice, Muted, ScreenHeader, SectionLabel,
   Skeleton,
 } from "../../src/components/ui";
 import { useAsync } from "../../src/hooks/useAsync";
-import { modeColor, modeInitials, radius, spacing, typography, useTheme } from "../../src/theme";
+import { modeColor, radius, spacing, typography, useTheme } from "../../src/theme";
 
-const RANGES = [
-  { key: "7", label: "Last 7 days", days: 7 },
-  { key: "30", label: "Last 30 days", days: 30 },
-  { key: "month", label: "This month", days: 0 },
-  { key: "90", label: "Last 90 days", days: 90 },
+type PeriodKey = "7" | "month" | "custom";
+
+const PERIODS: { key: PeriodKey; label: string }[] = [
+  { key: "7", label: "Last 7 Days" },
+  { key: "month", label: "This Month" },
+  { key: "custom", label: "Custom Date" },
 ];
 
-function rangeFor(key: string): { start: string; end: string } {
+function todayKey(): string {
+  return localDateKey(new Date());
+}
+
+function monthStart(): string {
+  const now = new Date();
+  return localDateKey(new Date(now.getFullYear(), now.getMonth(), 1));
+}
+
+function presetRange(key: Exclude<PeriodKey, "custom">): { start: string; end: string } {
   const end = new Date();
   if (key === "month") {
-    return {
-      start: localDateKey(new Date(end.getFullYear(), end.getMonth(), 1)),
-      end: localDateKey(end),
-    };
+    return { start: monthStart(), end: localDateKey(end) };
   }
-  const days = Number(key);
   const start = new Date(end);
-  start.setDate(end.getDate() - (days - 1));
+  start.setDate(end.getDate() - 6);
   return { start: localDateKey(start), end: localDateKey(end) };
 }
 
@@ -73,10 +83,14 @@ export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
   const { identity, activeModes } = useAuth();
 
-  const [rangeKey, setRangeKey] = useState("30");
+  const [periodKey, setPeriodKey] = useState<PeriodKey>("month");
+  const [custom, setCustom] = useState({ start: monthStart(), end: todayKey() });
   const [modeFilter, setModeFilter] = useState<string[] | null>(null);
 
-  const { start, end } = useMemo(() => rangeFor(rangeKey), [rangeKey]);
+  const { start, end } = useMemo(
+    () => (periodKey === "custom" ? custom : presetRange(periodKey)),
+    [periodKey, custom],
+  );
   const modes = modeFilter ?? activeModes;
   const modeKey = modes.join(",");
 
@@ -134,21 +148,42 @@ export default function ReportsScreen() {
     <View style={{ flex: 1, backgroundColor: t.bg }}>
       <ScreenHeader
         title="Reports"
-        subtitle={data ? `${data.total} completed` : "Completed jobs"}
+        subtitle={data ? `${data.total} completed jobs` : "Completed jobs"}
       >
-        <View style={{ marginTop: spacing.lg }}>
-          <ChipRow>
-            {RANGES.map((r) => (
-              <Chip
-                key={r.key}
-                label={r.label}
-                selected={r.key === rangeKey}
-                onPress={() => setRangeKey(r.key)}
-                color="#FFFFFF"
-              />
-            ))}
-          </ChipRow>
+        {/* A segmented control, not chips: three fixed choices in fixed positions. The
+            previous version coloured the selected chip white on a white header, which made
+            whichever one was chosen unreadable. */}
+        <View style={[styles.segment, { marginTop: spacing.lg }]}>
+          {PERIODS.map((p) => {
+            const on = p.key === periodKey;
+            return (
+              <Pressable
+                key={p.key}
+                onPress={() => setPeriodKey(p.key)}
+                style={[styles.segmentItem, on && { backgroundColor: "#FFFFFF" }]}
+              >
+                <Text
+                  style={[
+                    typography.small,
+                    { color: on ? "#4338CA" : "rgba(255,255,255,0.9)", fontWeight: "700" },
+                  ]}
+                >
+                  {p.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
+
+        {periodKey === "custom" ? (
+          <View style={{ marginTop: spacing.md }}>
+            <DateRangeButtons start={custom.start} end={custom.end} onChange={setCustom} onHeader />
+          </View>
+        ) : (
+          <Text style={[typography.small, { color: "rgba(255,255,255,0.85)", marginTop: spacing.md }]}>
+            {formatDay(start)} — {formatDay(end)}
+          </Text>
+        )}
       </ScreenHeader>
 
       <ScrollView
@@ -204,13 +239,15 @@ export default function ReportsScreen() {
                       <View
                         style={{
                           width: 38, height: 38, borderRadius: radius.md,
-                          backgroundColor: row.mode ? modeColor(row.mode) : t.cardAlt,
+                          backgroundColor: row.mode ? `${modeColor(row.mode)}1A` : t.cardAlt,
                           alignItems: "center", justifyContent: "center",
                         }}
                       >
-                        <Text style={{ color: "#FFFFFF", fontWeight: "800", fontSize: 12 }}>
-                          {row.mode ? modeInitials(row.mode) : "?"}
-                        </Text>
+                        {row.mode ? (
+                          <ModeIcon mode={row.mode} size={20} />
+                        ) : (
+                          <Text style={{ color: t.textMuted, fontWeight: "800", fontSize: 12 }}>?</Text>
+                        )}
                       </View>
 
                       <View style={{ flex: 1 }}>
@@ -259,6 +296,20 @@ export default function ReportsScreen() {
 }
 
 const styles = StyleSheet.create({
+  segment: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderRadius: radius.lg,
+    padding: 3,
+    gap: 3,
+  },
+  segmentItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+  },
   footer: {
     flexDirection: "row",
     alignItems: "center",
