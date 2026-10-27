@@ -30,6 +30,17 @@
     ],
     "scheme": "cargoramanager",
     "newArchEnabled": true,
-    "backgroundColor": "#0F172A"
+    "backgroundColor": "#0F172A",
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "b9f9c05f-4bfd-4450-bb3d-99e653ec3472"
+      }
+    },
+    "owner": "ashraf_damzz"
   }
 }
